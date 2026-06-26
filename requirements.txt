@@ -1,0 +1,36 @@
+# Core LangChain
+langchain
+langchain-community
+langchain-core
+langchain-text-splitters
+langchain-google-genai
+langchain-chroma
+langchain-huggingface
+
+# Vector store + embeddings
+chromadb
+sentence-transformers
+
+# Scraping
+requests
+beautifulsoup4
+lxml
+trafilatura
+
+# PDF handling
+pypdf
+reportlab
+
+# Optional OCR for scanned PDFs (mandatory disclosures etc).
+# Comment these out if you don't need OCR support -- pdf_loader.py
+# degrades gracefully without them. Also requires the system-level
+# `tesseract-ocr` package (e.g. `apt install tesseract-ocr` / `brew
+# install tesseract`).
+pytesseract
+pdf2image
+
+# Config
+python-dotenv
+
+# Frontend (added when you build the Streamlit UI)
+# streamlit
