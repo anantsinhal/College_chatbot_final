@@ -1,0 +1,15 @@
+warning: in the working copy of 'test_chunking.py', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/test_chunking.py b/test_chunking.py[m
+[1mindex be4a52d..05491f7 100644[m
+[1m--- a/test_chunking.py[m
+[1m+++ b/test_chunking.py[m
+[36m@@ -1,8 +1,4 @@[m
+[31m-"""[m
+[31m-Quick sanity check: crawls a handful of pages and inspects the resulting[m
+[31m-chunks, without touching the vector store. Useful after changing[m
+[31m-crawl/extraction/chunking logic.[m
+[31m-"""[m
+[32m+[m
+ [m
+ from config import BASE_URL[m
+ from ingestion.chunk_documents import chunk_documents[m

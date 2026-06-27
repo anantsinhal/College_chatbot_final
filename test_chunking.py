@@ -1,8 +1,4 @@
-"""
-Quick sanity check: crawls a handful of pages and inspects the resulting
-chunks, without touching the vector store. Useful after changing
-crawl/extraction/chunking logic.
-"""
+
 
 from config import BASE_URL
 from ingestion.chunk_documents import chunk_documents

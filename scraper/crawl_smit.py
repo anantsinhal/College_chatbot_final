@@ -260,11 +260,16 @@ def crawl(start_url: str = BASE_URL, max_pages: int = MAX_PAGES):
             # destination isn't itself a normal page we intended to
             # visit, skip rather than store a duplicate.
             final_url = normalize_url(response.url)
-            if response.history and final_url != normalized_current:
-                print(f"    -> redirected to {final_url}, skipping (likely a soft-404 or stale link)")
+            homepage_url = normalize_url(BASE_URL)
+            redirected_to_homepage = (
+                response.history
+                and final_url == homepage_url
+                and normalized_current != homepage_url
+            )
+            if redirected_to_homepage:
+                print(f"    -> redirected to homepage, skipping (likely a soft-404 or stale link)")
                 visited.add(normalized_current)
                 continue
-
             content_type = response.headers.get("Content-Type", "")
             if "text/html" not in content_type:
                 visited.add(normalized_current)
