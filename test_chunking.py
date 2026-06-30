@@ -1,5 +1,4 @@
 
-
 from config import BASE_URL
 from ingestion.chunk_documents import chunk_documents
 from scraper.crawl_smit import crawl
