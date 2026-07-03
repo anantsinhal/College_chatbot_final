@@ -1,4 +1,4 @@
-from langchain.chains import ConversationalRetrievalChain
+from langchain_classic.chains import ConversationalRetrievalChain
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from config import GOOGLE_API_KEY, LLM_MODEL, LLM_TEMPERATURE

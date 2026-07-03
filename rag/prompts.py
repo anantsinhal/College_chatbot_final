@@ -1,4 +1,4 @@
-from langchain.prompts import PromptTemplate
+from langchain_classic.prompts import PromptTemplate
 
 # Used by ConversationalRetrievalChain to turn a follow-up question (which
 # may rely on earlier turns, e.g. "what about its fees?") into a

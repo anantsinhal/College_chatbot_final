@@ -1,15 +1,4 @@
-"""
-Optional debug utility: dumps every loaded Document (scraped pages +
-parsed PDFs) into a single human-readable PDF so you can manually
-spot-check what's actually going into the vector store.
 
-This replaces the old `save_pdf.py`, which was being used as if it were
-a PDF *reader* in the ingestion pipeline -- it isn't one, it only writes
-PDFs, and it crashed/produced garbled output because raw scraped text
-(which can contain characters like "&", "<", ">") was passed straight
-into reportlab's Paragraph(), which interprets a subset of that text as
-XML markup. This version escapes the text properly.
-"""
 
 import os
 from xml.sax.saxutils import escape

@@ -17,9 +17,9 @@ from rag.chain import qa_chain
 # Page config -- must be the first Streamlit call
 # ---------------------------------------------------------------------------
 st.set_page_config(
-    page_title="SMIT Assistant",
+    page_title="SMIT Navigator",
     page_icon="🎓",
-    layout="centered",
+    layout="wide",
     initial_sidebar_state="expanded",
 )
 
@@ -29,44 +29,136 @@ st.set_page_config(
 CUSTOM_CSS = """
 <style>
     :root {
-        --bg-primary: #0F172A;
-        --bg-panel: #1E293B;
-        --bg-panel-hover: #273449;
-        --accent: #38BDF8;
-        --accent-dim: #1A4A63;
-        --text-primary: #F1F5F9;
-        --text-muted: #94A3B8;
-        --source-tag: #F59E0B;
-        --border: #334155;
+        --bg-primary: #07111f;
+        --bg-surface: rgba(8, 18, 33, 0.88);
+        --bg-surface-strong: rgba(11, 24, 42, 0.96);
+        --bg-surface-soft: rgba(255, 255, 255, 0.04);
+        --accent: #7dd3fc;
+        --accent-strong: #38bdf8;
+        --accent-warm: #fbbf24;
+        --text-primary: #f8fafc;
+        --text-muted: #a6b3c6;
+        --border: rgba(148, 163, 184, 0.22);
+        --shadow: 0 18px 50px rgba(2, 8, 23, 0.35);
     }
 
     .stApp {
-        background: var(--bg-primary);
+        background:
+            radial-gradient(circle at top left, rgba(56, 189, 248, 0.16), transparent 28%),
+            radial-gradient(circle at top right, rgba(251, 191, 36, 0.10), transparent 22%),
+            linear-gradient(180deg, #07111f 0%, #0b172a 48%, #050b14 100%);
+        color: var(--text-primary);
     }
 
-    .smit-header {
-        padding: 1.25rem 0 0.5rem 0;
-        border-bottom: 1px solid var(--border);
-        margin-bottom: 1.5rem;
+    .block-container {
+        padding-top: 1.5rem;
+        padding-bottom: 2rem;
+        max-width: 1180px;
     }
-    .smit-header h1 {
-        font-size: 1.5rem;
+
+    .hero {
+        position: relative;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        padding: 1.6rem 1.5rem 1.35rem 1.5rem;
+        margin-bottom: 1.1rem;
+        background: linear-gradient(135deg, rgba(8, 18, 33, 0.94), rgba(14, 28, 48, 0.82));
+        box-shadow: var(--shadow);
+    }
+
+    .hero::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at top right, rgba(125, 211, 252, 0.14), transparent 30%);
+        pointer-events: none;
+    }
+
+    .hero-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 0.35rem 0.7rem;
+        border: 1px solid rgba(125, 211, 252, 0.22);
+        border-radius: 999px;
+        background: rgba(125, 211, 252, 0.08);
+        color: var(--accent);
+        font-size: 0.73rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
         font-weight: 700;
-        color: var(--text-primary);
-        margin: 0;
-        letter-spacing: -0.01em;
+        margin-bottom: 0.75rem;
+        position: relative;
+        z-index: 1;
     }
-    .smit-header p {
+
+    .hero-title {
+        font-size: 2.1rem;
+        line-height: 1.05;
+        font-weight: 800;
+        color: var(--text-primary);
+        margin: 0 0 0.55rem 0;
+        letter-spacing: -0.03em;
+        position: relative;
+        z-index: 1;
+    }
+
+    .hero-copy {
         color: var(--text-muted);
-        font-size: 0.875rem;
-        margin: 0.25rem 0 0 0;
+        font-size: 0.98rem;
+        line-height: 1.6;
+        max-width: 760px;
+        margin: 0 0 1rem 0;
+        position: relative;
+        z-index: 1;
+    }
+
+    .hero-stats {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.75rem;
+        position: relative;
+        z-index: 1;
+    }
+
+    .hero-stat {
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        padding: 0.8rem 0.9rem;
+        background: rgba(255, 255, 255, 0.04);
+    }
+
+    .hero-stat-value {
+        color: var(--text-primary);
+        font-weight: 800;
+        font-size: 1.02rem;
+        margin-bottom: 0.15rem;
+    }
+
+    .hero-stat-label {
+        color: var(--text-muted);
+        font-size: 0.82rem;
+        line-height: 1.45;
     }
 
     [data-testid="stChatMessage"] {
-        background: var(--bg-panel);
+        background: var(--bg-surface);
         border: 1px solid var(--border);
-        border-radius: 10px;
-        padding: 0.25rem 0.5rem;
+        border-radius: 18px;
+        box-shadow: var(--shadow);
+        margin-bottom: 0.75rem;
+    }
+
+    [data-testid="stChatMessage"] p,
+    [data-testid="stChatMessage"] li {
+        color: var(--text-primary);
+        font-size: 0.98rem;
+        line-height: 1.65;
+    }
+
+    [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] {
+        padding: 0.1rem 0.2rem;
     }
 
     .source-strip {
@@ -74,96 +166,151 @@ CUSTOM_CSS = """
         padding-top: 0.6rem;
         border-top: 1px dashed var(--border);
     }
+
     .source-strip-label {
-        font-size: 0.7rem;
+        font-size: 0.72rem;
         text-transform: uppercase;
         letter-spacing: 0.06em;
-        color: var(--text-muted);
+        color: var(--accent);
         margin-bottom: 0.4rem;
         font-weight: 600;
     }
+
     .source-tag {
         display: inline-block;
-        font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
-        font-size: 0.72rem;
-        color: var(--source-tag);
-        background: rgba(245, 158, 11, 0.08);
-        border: 1px solid rgba(245, 158, 11, 0.25);
-        border-radius: 5px;
-        padding: 0.2rem 0.5rem;
+        font-size: 0.74rem;
+        color: #fbbf24;
+        background: rgba(251, 191, 36, 0.09);
+        border: 1px solid rgba(251, 191, 36, 0.22);
+        border-radius: 999px;
+        padding: 0.28rem 0.6rem;
         margin: 0.15rem 0.3rem 0.15rem 0;
         text-decoration: none;
     }
+
     .source-tag:hover {
-        background: rgba(245, 158, 11, 0.16);
+        background: rgba(251, 191, 36, 0.18);
     }
 
     [data-testid="stSidebar"] {
-        background: var(--bg-panel);
+        background: linear-gradient(180deg, rgba(8, 18, 33, 0.98), rgba(5, 11, 20, 0.98));
         border-right: 1px solid var(--border);
     }
+
+    [data-testid="stSidebar"] .block-container {
+        padding-top: 1.3rem;
+    }
+
     .sidebar-eyebrow {
-        font-size: 0.7rem;
+        font-size: 0.72rem;
         text-transform: uppercase;
         letter-spacing: 0.08em;
         color: var(--accent);
         font-weight: 700;
         margin-bottom: 0.25rem;
     }
+
     .sidebar-title {
-        font-size: 1.1rem;
-        font-weight: 700;
+        font-size: 1.15rem;
+        font-weight: 800;
         color: var(--text-primary);
-        margin-bottom: 0.5rem;
+        margin-bottom: 0.55rem;
     }
+
     .sidebar-desc {
-        font-size: 0.82rem;
+        font-size: 0.85rem;
         color: var(--text-muted);
         line-height: 1.5;
         margin-bottom: 1.25rem;
     }
 
+    .sidebar-card {
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        padding: 0.9rem;
+        background: var(--bg-surface-soft);
+        margin-bottom: 1rem;
+    }
+
+    .sidebar-card-title {
+        color: var(--text-primary);
+        font-size: 0.88rem;
+        font-weight: 700;
+        margin-bottom: 0.25rem;
+    }
+
+    .sidebar-card-copy {
+        color: var(--text-muted);
+        font-size: 0.82rem;
+        line-height: 1.45;
+    }
+
     .stButton button {
-        background: var(--bg-panel-hover);
+        background: rgba(255, 255, 255, 0.05);
         border: 1px solid var(--border);
         color: var(--text-primary);
         text-align: left;
-        font-size: 0.82rem;
-        padding: 0.55rem 0.8rem;
-        border-radius: 8px;
+        font-size: 0.84rem;
+        padding: 0.6rem 0.85rem;
+        border-radius: 12px;
         width: 100%;
-        transition: border-color 0.15s ease;
+        transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
     }
+
     .stButton button:hover {
-        border-color: var(--accent);
+        border-color: rgba(125, 211, 252, 0.45);
         color: var(--accent);
+        transform: translateY(-1px);
+        background: rgba(125, 211, 252, 0.08);
     }
 
     [data-testid="stChatInput"] textarea {
-        background: var(--bg-panel) !important;
+        background: var(--bg-surface-strong) !important;
         border: 1px solid var(--border) !important;
         color: var(--text-primary) !important;
+        border-radius: 16px !important;
+        box-shadow: var(--shadow);
+    }
+
+    [data-testid="stChatInput"] textarea::placeholder {
+        color: var(--text-muted) !important;
+    }
+
+    [data-testid="stChatInput"] button {
+        border-radius: 14px;
+        background: linear-gradient(135deg, var(--accent-strong), var(--accent));
+        color: #052033;
+        font-weight: 700;
     }
 
     .empty-state {
         text-align: center;
-        padding: 2.5rem 1rem;
+        padding: 2.8rem 1rem 1.6rem 1rem;
         color: var(--text-muted);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.015));
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        box-shadow: var(--shadow);
+        margin-bottom: 1rem;
     }
+
     .empty-state-icon {
-        font-size: 2rem;
+        font-size: 2.3rem;
         margin-bottom: 0.75rem;
         opacity: 0.6;
     }
+
     .empty-state h3 {
         color: var(--text-primary);
-        font-size: 1.1rem;
-        margin-bottom: 0.4rem;
+        font-size: 1.15rem;
+        margin-bottom: 0.45rem;
     }
+
     .empty-state p {
-        font-size: 0.85rem;
-        max-width: 360px;
+        font-size: 0.88rem;
+        max-width: 420px;
         margin: 0 auto;
+        line-height: 1.6;
     }
 </style>
 """
@@ -231,12 +378,28 @@ with st.sidebar:
     st.markdown('<div class="sidebar-title">Ask about SMIT</div>', unsafe_allow_html=True)
     st.markdown(
         '<div class="sidebar-desc">Answers are pulled directly from SMIT\'s '
-        "official website and documents \u2014 every response cites its "
+        "official website and documents — every response cites its "
         "source so you can verify it yourself.</div>",
         unsafe_allow_html=True,
     )
 
-    st.markdown('<div class="sidebar-eyebrow" style="margin-top: 0.5rem;">Try asking</div>', unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div class="sidebar-card">
+            <div class="sidebar-card-title">What this bot knows</div>
+            <div class="sidebar-card-copy">
+                Admissions, programs, eligibility, fees, placements, and
+                official notices indexed from SMIT pages and PDFs.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        '<div class="sidebar-eyebrow" style="margin-top: 0.5rem;">Try asking</div>',
+        unsafe_allow_html=True,
+    )
     for question in SUGGESTED_QUESTIONS:
         if st.button(question, key=f"suggest_{question}", use_container_width=True):
             st.session_state.pending_question = question
@@ -252,9 +415,28 @@ with st.sidebar:
 # ---------------------------------------------------------------------------
 st.markdown(
     """
-    <div class="smit-header">
-        <h1>SMIT Assistant</h1>
-        <p>Sikkim Manipal Institute of Technology \u00b7 Programs, fees, admissions & more</p>
+    <div class="hero">
+        <div class="hero-badge">SMIT knowledge assistant</div>
+        <div class="hero-title">A cleaner way to explore SMIT.</div>
+        <div class="hero-copy">
+            Ask about admissions, fees, courses, placements, or policy
+            details. The assistant pulls answers from the knowledge base and
+            shows the sources it used.
+        </div>
+        <div class="hero-stats">
+            <div class="hero-stat">
+                <div class="hero-stat-value">Source-backed answers</div>
+                <div class="hero-stat-label">Every response can be traced back to an indexed document.</div>
+            </div>
+            <div class="hero-stat">
+                <div class="hero-stat-value">Admissions to placements</div>
+                <div class="hero-stat-label">Covers the core questions students usually ask first.</div>
+            </div>
+            <div class="hero-stat">
+                <div class="hero-stat-value">Fast follow-up chat</div>
+                <div class="hero-stat-label">Conversation context stays short and focused for better replies.</div>
+            </div>
+        </div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -269,7 +451,7 @@ if not st.session_state.messages:
         <div class="empty-state">
             <div class="empty-state-icon">🎓</div>
             <h3>Ask anything about SMIT</h3>
-            <p>Programs, fees, eligibility, admissions, placements \u2014
+            <p>Programs, fees, eligibility, admissions, placements —
             pick a question on the left or type your own below.</p>
         </div>
         """,
