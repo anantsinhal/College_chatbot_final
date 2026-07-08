@@ -320,6 +320,7 @@ st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 # Constants
 # ---------------------------------------------------------------------------
 MAX_HISTORY_TURNS = 3
+MAX_QUESTION_LENGTH = 500
 
 SUGGESTED_QUESTIONS = [
     "What B.Tech programs does SMIT offer?",
@@ -489,5 +490,10 @@ active_question = st.session_state.pending_question or typed_question
 st.session_state.pending_question = None
 
 if active_question:
+    if len(active_question) > MAX_QUESTION_LENGTH:
+        st.error(
+            f"Please keep your question under {MAX_QUESTION_LENGTH} characters."
+        )
+        st.stop()
     ask(active_question)
     st.rerun()

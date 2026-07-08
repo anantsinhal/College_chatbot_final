@@ -33,8 +33,7 @@ def load_scraped_pages() -> list[Document]:
 
         if len(content) < MIN_CONTENT_LENGTH:
             continue
-        # Defensive de-dup in case the crawler ever produces duplicate
-        # entries for the same normalized source.
+      
         if source in seen_sources:
             continue
         seen_sources.add(source)

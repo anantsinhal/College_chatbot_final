@@ -22,8 +22,7 @@ def save_documents_to_pdf(documents, output_file="data/processed/debug_export.pd
         content.append(Paragraph(escape(f"{title} — {source}"), styles["Heading3"]))
         content.append(Spacer(1, 6))
 
-        # Truncate very long docs for readability; this is a spot-check
-        # tool, not the actual RAG storage.
+      
         body = escape(doc.page_content[:3000])
         content.append(Paragraph(body, styles["BodyText"]))
         content.append(Spacer(1, 18))
