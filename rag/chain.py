@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Iterable
 
@@ -20,6 +21,64 @@ llm = ChatGoogleGenerativeAI(
     temperature=LLM_TEMPERATURE,
 )
 
+# ---------------------------------------------------------------------------
+# Intent classification
+# ---------------------------------------------------------------------------
+
+GREETING_PATTERNS = {
+    "hi", "hello", "hey", "hii", "helo", "helloo", "heyy",
+    "good morning", "good afternoon", "good evening", "good night",
+    "how are you", "how r u", "how are u", "how do you do",
+    "what's up", "whats up", "sup", "yo", "namaste", "hola",
+    "greetings", "howdy",
+}
+
+GREETING_RESPONSE = (
+    "Hello! 👋 I'm the SMIT Student Assistant — I can help you with "
+    "information about B.Tech programs, fees, admissions, placements, "
+    "scholarships, and more at Sikkim Manipal Institute of Technology.\n\n"
+    "What would you like to know?"
+)
+
+OFF_TOPIC_RESPONSE = (
+    "I'm designed specifically to answer questions about SMIT — "
+    "programs, fees, admissions, placements, campus life, and official "
+    "policies. I can't help with that particular request, but feel free "
+    "to ask anything about SMIT!"
+)
+
+SMIT_KEYWORDS = re.compile(
+    r"\b(smit|smu|sikkim|manipal|b\.?tech|mtech|mba|mca|bca|bba|"
+    r"admission|fee|fees|placement|scholarship|hostel|campus|faculty|"
+    r"program|course|syllabus|rank|accreditat|eligib|apply|seat|cutoff|"
+    r"department|research|lab|library|iqac|nirf|nba|aicte)\b",
+    re.IGNORECASE,
+)
+
+OFF_TOPIC_PATTERNS = re.compile(
+    r"^(write (a |me )?(poem|story|essay|song|code|email)|"
+    r"(what is |what'?s |define )(love|life|[0-9])|"
+    r"(who (is |was )(god|allah|jesus|modi|trump|musk|biden))|"
+    r"tell me a joke|make me laugh|play (a song|music)|"
+    r"(weather|temperature) in|translate (this )?to|"
+    r"capital of [a-z]+$)",
+    re.IGNORECASE,
+)
+
+
+def _is_greeting(text: str) -> bool:
+    return text.lower().strip().rstrip("!?. ") in GREETING_PATTERNS
+
+
+def _is_off_topic(text: str) -> bool:
+    if SMIT_KEYWORDS.search(text):
+        return False
+    return bool(OFF_TOPIC_PATTERNS.match(text.strip()))
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def _message_text(response: Any) -> str:
     content = getattr(response, "content", response)
@@ -47,6 +106,10 @@ def _format_documents(documents) -> str:
     return "\n\n".join(chunks)
 
 
+# ---------------------------------------------------------------------------
+# Chain
+# ---------------------------------------------------------------------------
+
 @dataclass
 class SimpleConversationalRetrievalChain:
     llm: ChatGoogleGenerativeAI
@@ -55,7 +118,6 @@ class SimpleConversationalRetrievalChain:
     def _rewrite_question(self, question: str, chat_history) -> str:
         if not chat_history:
             return question
-
         prompt = CONDENSE_QUESTION_PROMPT.format(
             chat_history=_format_chat_history(chat_history),
             question=question,
@@ -67,6 +129,24 @@ class SimpleConversationalRetrievalChain:
         question = inputs.get("question", "").strip()
         chat_history = inputs.get("chat_history", [])
 
+        # --- Intent check ---
+        if _is_greeting(question):
+            return {
+                "answer": GREETING_RESPONSE,
+                "source_documents": [],
+                "question": question,
+                "intent": "greeting",
+            }
+
+        if _is_off_topic(question):
+            return {
+                "answer": OFF_TOPIC_RESPONSE,
+                "source_documents": [],
+                "question": question,
+                "intent": "off_topic",
+            }
+
+        # --- Full RAG pipeline ---
         standalone_question = self._rewrite_question(question, chat_history)
         source_documents = list(self.retriever.invoke(standalone_question))
         context = _format_documents(source_documents)
@@ -81,6 +161,7 @@ class SimpleConversationalRetrievalChain:
             "answer": answer,
             "source_documents": source_documents,
             "question": standalone_question,
+            "intent": "smit_query",
         }
 
 
