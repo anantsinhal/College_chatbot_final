@@ -4,7 +4,9 @@ from rag.chain import qa_chain
 
 from ui.styles import apply_styles
 from ui.sidebar import render_sidebar
-
+from ui.hero import render_hero
+from ui.chat import render_chat
+from ui.right_panel import render_right_panel
 from ui.session import init_session
 from ui.constants import MAX_HISTORY
 
@@ -74,5 +76,15 @@ def ask(question: str):
         )
 
 
+# ── Sidebar ──────────────────────────────────────────────────────────────────
 render_sidebar()
 
+# ── Main layout: left content (hero + chat) | right panel ────────────────────
+col_main, col_right = st.columns([3, 1], gap="large")
+
+with col_main:
+    render_hero()
+    render_chat(st.session_state.messages, ask)
+
+with col_right:
+    render_right_panel()
