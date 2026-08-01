@@ -4,20 +4,21 @@ import re
 from dataclasses import dataclass
 from typing import Any, Iterable
 
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 
-from config import GOOGLE_API_KEY, LLM_MODEL, LLM_TEMPERATURE
+from config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL, LLM_TEMPERATURE
 from rag.prompts import CONDENSE_QUESTION_PROMPT, QA_PROMPT
 from rag.retriever import retriever
 
-if not GOOGLE_API_KEY:
+if not DEEPSEEK_API_KEY:
     raise ValueError(
-        "GOOGLE_API_KEY is not set. Add it to a .env file in the project root."
+        "DEEPSEEK_API_KEY is not set. Add it to a .env file in the project root."
     )
 
-llm = ChatGoogleGenerativeAI(
-    model=LLM_MODEL,
-    google_api_key=GOOGLE_API_KEY,
+llm = ChatOpenAI(
+    model=DEEPSEEK_MODEL,
+    api_key=DEEPSEEK_API_KEY,
+    base_url=DEEPSEEK_BASE_URL,
     temperature=LLM_TEMPERATURE,
 )
 
@@ -112,7 +113,7 @@ def _format_documents(documents) -> str:
 
 @dataclass
 class SimpleConversationalRetrievalChain:
-    llm: ChatGoogleGenerativeAI
+    llm: ChatOpenAI
     retriever: Any
 
     def _rewrite_question(self, question: str, chat_history) -> str:
@@ -122,7 +123,10 @@ class SimpleConversationalRetrievalChain:
             chat_history=_format_chat_history(chat_history),
             question=question,
         )
-        rewritten = _message_text(self.llm.invoke(prompt)).strip()
+        try:
+            rewritten = _message_text(self.llm.invoke(prompt)).strip()
+        except Exception as exc:
+            raise RuntimeError("question rewrite failed") from exc
         return rewritten or question
 
     def invoke(self, inputs: dict[str, Any]) -> dict[str, Any]:
@@ -148,14 +152,22 @@ class SimpleConversationalRetrievalChain:
 
         # --- Full RAG pipeline ---
         standalone_question = self._rewrite_question(question, chat_history)
-        source_documents = list(self.retriever.invoke(standalone_question))
+
+        try:
+            source_documents = list(self.retriever.invoke(standalone_question))
+        except Exception as exc:
+            raise RuntimeError("retrieval failed") from exc
+
         context = _format_documents(source_documents)
 
         answer_prompt = QA_PROMPT.format(
             context=context,
             question=standalone_question,
         )
-        answer = _message_text(self.llm.invoke(answer_prompt)).strip()
+        try:
+            answer = _message_text(self.llm.invoke(answer_prompt)).strip()
+        except Exception as exc:
+            raise RuntimeError("answer generation failed") from exc
 
         return {
             "answer": answer,

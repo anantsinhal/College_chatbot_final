@@ -57,3 +57,18 @@ def render_right_panel() -> None:
           {tips_items}
         </div>
     """), unsafe_allow_html=True)
+
+    if st.session_state.get("last_error"):
+        st.markdown(
+            _h(
+                f"""
+                <div class="smit-tips" style="margin-top:12px;">
+                  <div class="smit-tips-header">&#9888; Debug</div>
+                  <p style="color:#cbd5e1;font-size:12px;margin:0;word-break:break-word;">
+                    Last error: {st.session_state.last_error}
+                  </p>
+                </div>
+                """
+            ),
+            unsafe_allow_html=True,
+        )

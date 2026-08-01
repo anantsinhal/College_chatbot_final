@@ -11,3 +11,6 @@ def init_session():
 
     if "pending" not in st.session_state:
         st.session_state.pending = None
+
+    if "last_error" not in st.session_state:
+        st.session_state.last_error = None

@@ -1,23 +1,6 @@
 """
 Crawls the SMIT section of the SMU website and extracts clean, readable
 page content for RAG ingestion.
-
-Key improvements over the original crawler:
-  1. URL normalization -> no more duplicate pages from "www" vs non-"www"
-     hosts, trailing slashes, or query-string noise.
-  2. trafilatura-based main-content extraction -> nav bars, footers,
-     announcement tickers and menu links are reliably stripped, even when
-     the site doesn't use semantic <nav>/<header> tags.
-  3. A BeautifulSoup fallback (with explicit junk-block removal) used
-     ONLY when trafilatura finds genuinely nothing -- not merely when its
-     result is short. (See extract_content() comment below for why this
-     distinction matters.)
-  4. Real link discovery restricted to the SMIT path, rejecting nested
-     duplicate paths like /smit/smit/... caused by relative-link bugs on
-     the source site.
-  5. Redirect detection -- pages that silently redirect elsewhere (e.g.
-     soft-404s redirecting to the homepage) are skipped instead of being
-     stored as duplicate content under the wrong URL.
 """
 
 import json
@@ -51,28 +34,20 @@ HEADERS = {
     )
 }
 
-# Blocks of text that show up on nearly every page (nav labels, generic
-# CTAs, ticker text) and add noise instead of signal. Matched as
-# substrings after whitespace-normalization, so keep them lowercase here
-# is not required -- comparison is done case-sensitively against the
-# cleaned text, matching the site's own casing.
-#
-# The second entry was observed verbatim across several pages
-# (admissions-majitar-campus.php, leadership.php, iqac.php, news.php,
-# events.php, faculty.php, download-forms.php,
-# ugc-mandatory-disclosure.php) whenever the BS4 fallback extraction
-# path ran and let the site's mega-menu through. This is a second layer
-# of defense on top of the extract_content() fix (which now prefers
-# trafilatura's honest short result over a bad fallback) -- if the BS4
-# fallback ever fires again for some other page, this keeps the menu
-# text from polluting that page's stored content even if
-# junk_selectors misses it.
 BOILERPLATE_SNIPPETS = [
     "Apply now × Search Now × Search Now Search Previous Next Previous Next",
     "Know SMIT History Vision/Mission Administration Mandatory "
     "Disclosures Rankings Achievements Accreditations Affiliations "
     "International Collaboration Cell Institution's Innovation Council "
     "ICC Committees Human Resource Policy Notice NIRF IQAC News Events",
+]
+
+# Domains/paths allowed specifically for admissions & application forms
+EXTRA_ALLOWED_DOMAINS = ["applysmit.in", "apply.applysmit.in"]
+EXTRA_ALLOWED_PATHS = [
+    "Eligibility-and-Admission-Process.php",
+    "admissions-majitar-campus.php",
+    "download-forms.php",
 ]
 
 
@@ -82,8 +57,7 @@ def normalize_url(url: str) -> str:
       - strip the "www." prefix
       - drop fragments (#...)
       - drop a trailing slash (except for the bare domain root)
-      - lowercase the scheme/host (path case is left alone since some
-        servers are case-sensitive)
+      - lowercase the scheme/host (path case is left alone)
     """
     parsed = urlparse(url)
 
@@ -95,8 +69,6 @@ def normalize_url(url: str) -> str:
     if path.endswith("/") and len(path) > 1:
         path = path[:-1]
 
-    # Drop fragment entirely; keep query string since some pages (e.g.
-    # event-details.php?url=1063) are genuinely distinct content.
     cleaned = urlunparse((parsed.scheme.lower(), netloc, path, "", parsed.query, ""))
     return cleaned
 
@@ -110,19 +82,23 @@ def is_crawlable(url: str) -> bool:
     parsed = urlparse(url)
     host = parsed.netloc.lower().lstrip("www.")
 
+    # 1. Allow dedicated application portals
+    if any(allowed in host for allowed in EXTRA_ALLOWED_DOMAINS):
+        return True
+
+    # 2. Check main domain
     if ALLOWED_DOMAIN not in host:
         return False
+
+    # 3. Allow explicit admission path keywords
+    if any(path_kw in parsed.path for path_kw in EXTRA_ALLOWED_PATHS):
+        return True
+
+    # 4. Standard path prefix check
     if ALLOWED_PATH_PREFIX not in parsed.path:
         return False
 
-    # Reject nested duplicate paths like /smit/smit/dept-of-physics.php.
-    # These showed up because some on-site relative links resolve
-    # against the wrong base (e.g. an href of "smit/dept-of-physics.php"
-    # used from a page already under /smit/, producing /smit/smit/...).
-    # The substring check above only confirms "/smit" appears somewhere
-    # in the path, so it let these through, and they got crawled as if
-    # they were unique pages -- each one returning the exact same
-    # generic homepage-style content as smit/dept-of-physics.php itself.
+    # Reject nested duplicate relative paths
     if parsed.path.count(ALLOWED_PATH_PREFIX) > 1:
         return False
 
@@ -137,12 +113,8 @@ def clean_text(text: str) -> str:
 
 
 def extract_with_bs4_fallback(html: str) -> str:
-    """Used only when trafilatura comes back empty."""
     soup = BeautifulSoup(html, "html.parser")
 
-    # Remove obvious non-content elements, including common class/id
-    # patterns this site (and most CMS-driven sites) use for menus and
-    # tickers even when they aren't wrapped in semantic tags.
     junk_selectors = [
         "script", "style", "nav", "footer", "header", "noscript",
         "[class*=menu]", "[class*=nav]", "[class*=footer]",
@@ -173,18 +145,6 @@ def extract_content(html: str, url: str) -> str:
         if cleaned:
             return cleaned
 
-    # Only fall back to BS4 when trafilatura found genuinely NOTHING.
-    #
-    # Earlier version fell back whenever trafilatura's result was
-    # shorter than MIN_CONTENT_LENGTH. That backfired on pages like
-    # admissions-majitar-campus.php, leadership.php, and news.php: their
-    # real body text is short, so trafilatura (correctly) returned a
-    # short result -- triggering the fallback. The BS4 fallback's
-    # junk_selectors list only strips elements whose class/id contains
-    # "menu"/"nav"/"footer", but this site's actual mega-menu container
-    # uses different class names, so the fallback let the entire
-    # navigation dropdown through as if it were page content. Trusting
-    # trafilatura's honest (if short) extraction avoids that.
     return extract_with_bs4_fallback(html)
 
 
@@ -221,10 +181,15 @@ def save_data(documents, pdf_links):
 
 
 def crawl(start_url: str = BASE_URL, max_pages: int = MAX_PAGES):
-    start_url = normalize_url(start_url)
+    seed_urls = [
+        BASE_URL,
+        "https://apply.applysmit.in/",
+        "https://smu.edu.in/Eligibility-and-Admission-Process.php",
+        "https://smu.edu.in/admissions-majitar-campus.php",
+    ]
 
     visited = set()
-    queue = [start_url]
+    queue = [normalize_url(u) for u in seed_urls if u]
 
     documents = []
     pdf_links = set()
@@ -247,18 +212,6 @@ def crawl(start_url: str = BASE_URL, max_pages: int = MAX_PAGES):
                 visited.add(normalized_current)
                 continue
 
-            # requests follows redirects by default and response.status_code
-            # reflects the FINAL page's status, not whether a redirect
-            # happened. Several URLs (smit-experience.php,
-            # welcome-messages-smu.php, the smit/smit/... nested
-            # duplicates, and stale external links) turned out to
-            # redirect to the homepage and got a normal 200 there --
-            # so they were silently stored as if they were unique pages,
-            # when in fact every one of them held identical homepage
-            # text. Comparing the final URL against the one we
-            # requested catches this: if they differ and the
-            # destination isn't itself a normal page we intended to
-            # visit, skip rather than store a duplicate.
             final_url = normalize_url(response.url)
             homepage_url = normalize_url(BASE_URL)
             redirected_to_homepage = (
@@ -267,9 +220,10 @@ def crawl(start_url: str = BASE_URL, max_pages: int = MAX_PAGES):
                 and normalized_current != homepage_url
             )
             if redirected_to_homepage:
-                print(f"    -> redirected to homepage, skipping (likely a soft-404 or stale link)")
+                print("    -> redirected to homepage, skipping")
                 visited.add(normalized_current)
                 continue
+
             content_type = response.headers.get("Content-Type", "")
             if "text/html" not in content_type:
                 visited.add(normalized_current)

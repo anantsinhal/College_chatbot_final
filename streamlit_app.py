@@ -7,6 +7,7 @@ Backend (qa_chain, session state, ask()) is untouched.
 """
 
 import streamlit as st
+import traceback
 
 from rag.chain import qa_chain
 
@@ -18,6 +19,29 @@ from ui.chips import render_chips
 from ui.chat import render_chat
 from ui.right_panel import render_right_panel
 from ui.constants import MAX_HISTORY
+
+
+def _exception_text(exc: Exception) -> str:
+    parts = [f"{type(exc).__name__}: {exc}"]
+    cause = exc.__cause__
+    while cause is not None:
+        parts.append(f"caused by {type(cause).__name__}: {cause}")
+        cause = cause.__cause__
+    return " | ".join(parts)
+
+
+def _is_quota_error(exc: Exception) -> bool:
+    text = _exception_text(exc).lower()
+    return "resource_exhausted" in text or "quota exceeded" in text or "429" in text
+
+
+def _fallback_answer(exc: Exception) -> str:
+    if _is_quota_error(exc):
+        return (
+            "The Gemini API quota for this project has been exceeded. "
+            "Please try again later or switch to a paid/API-enabled model."
+        )
+    return "I'm temporarily unable to reach the knowledge base."
 
 # ── Page config (must be first Streamlit call) ────────────────────────────────
 st.set_page_config(
@@ -39,6 +63,7 @@ def ask(question: str) -> None:
     st.session_state.messages.append({"role": "user", "content": question})
 
     try:
+        st.session_state.last_error = None
         result = qa_chain.invoke(
             {
                 "question": question,
@@ -55,8 +80,10 @@ def ask(question: str) -> None:
             }
         )
 
-    except Exception:
-        answer = "I'm temporarily unable to reach the knowledge base."
+    except Exception as exc:
+        st.session_state.last_error = _exception_text(exc)
+        traceback.print_exc()
+        answer = _fallback_answer(exc)
         sources = []
         intent = "error"
 

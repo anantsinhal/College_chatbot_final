@@ -6,7 +6,9 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 # API keys
 # ---------------------------------------------------------------------------
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 
 # ---------------------------------------------------------------------------
 # Crawl settings
@@ -54,5 +56,4 @@ RETRIEVER_FETCH_K = 20
 # ---------------------------------------------------------------------------
 # LLM
 # ---------------------------------------------------------------------------
-LLM_MODEL = "gemini-2.5-flash"
 LLM_TEMPERATURE = 0.2

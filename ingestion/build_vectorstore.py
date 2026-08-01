@@ -17,6 +17,8 @@ from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
 
 from config import CHROMA_PATH, COLLECTION_NAME, EMBEDDING_MODEL
+from ingestion.load_documents import load_all_documents
+from ingestion.chunk_documents import chunk_documents
 
 
 def create_vectorstore(chunks: list[Document]) -> Chroma:
@@ -39,3 +41,21 @@ def create_vectorstore(chunks: list[Document]) -> Chroma:
 
     print(f"Vector store created successfully with {len(chunks)} chunks.")
     return vectorstore
+
+
+if __name__ == "__main__":
+    print("=== Starting Vector Store Build Pipeline ===")
+    
+    # 1. Load web pages and PDFs
+    print("Step 1: Loading raw documents...")
+    raw_docs = load_all_documents()
+    
+    # 2. Chunk documents
+    print("Step 2: Chunking documents...")
+    chunks = chunk_documents(raw_docs)
+    
+    # 3. Create and persist ChromaDB vectorstore
+    print("Step 3: Generating embeddings & storing in ChromaDB...")
+    create_vectorstore(chunks)
+    
+    print("=== Ingestion Complete! ===")
