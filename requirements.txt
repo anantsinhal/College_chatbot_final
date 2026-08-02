@@ -4,7 +4,6 @@ langchain-community
 langchain-core
 langchain-text-splitters
 langchain-openai
-langchain-deepseek
 langchain-chroma
 langchain-huggingface
 
@@ -34,4 +33,4 @@ pdf2image
 python-dotenv
 
 # Frontend (added when you build the Streamlit UI)
-# streamlit
+streamlit

@@ -9,7 +9,12 @@ Backend (qa_chain, session state, ask()) is untouched.
 import streamlit as st
 import traceback
 
-from rag.chain import qa_chain
+try:
+    from rag.chain import qa_chain
+    _startup_error = None
+except Exception as exc:
+    qa_chain = None
+    _startup_error = f"{type(exc).__name__}: {exc}"
 
 from ui.styles import apply_styles
 from ui.session import init_session
@@ -38,8 +43,8 @@ def _is_quota_error(exc: Exception) -> bool:
 def _fallback_answer(exc: Exception) -> str:
     if _is_quota_error(exc):
         return (
-            "The Gemini API quota for this project has been exceeded. "
-            "Please try again later or switch to a paid/API-enabled model."
+            "The AI model has reached its usage limit. "
+            "Please try again later or contact support."
         )
     return "I'm temporarily unable to reach the knowledge base."
 
@@ -57,10 +62,25 @@ apply_styles()
 # ── Session state ─────────────────────────────────────────────────────────────
 init_session()
 
+if _startup_error and not st.session_state.get("last_error"):
+    st.session_state.last_error = _startup_error
+
 
 # ── Backend: ask() — DO NOT MODIFY ───────────────────────────────────────────
 def ask(question: str) -> None:
     st.session_state.messages.append({"role": "user", "content": question})
+
+    if qa_chain is None:
+        answer = "Backend initialization failed. Check the debug panel for details."
+        st.session_state.messages.append(
+            {
+                "role": "assistant",
+                "content": answer,
+                "sources": [],
+                "intent": "error",
+            }
+        )
+        return
 
     try:
         st.session_state.last_error = None
