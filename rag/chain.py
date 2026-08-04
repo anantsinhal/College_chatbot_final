@@ -1,14 +1,40 @@
+"""
+Conversational RAG chain for the SMIT chatbot.
+
+Key design decisions:
+  - Question rewrite only fires when the question contains a real dependency
+    signal (pronoun, "what about", etc.).  Self-contained questions skip the
+    extra LLM call entirely, halving API usage for the majority of queries.
+  - Rewrite failure is non-fatal: falls back to the original question and logs
+    a warning instead of aborting the whole request.
+  - Uses retrieve_with_confidence() to get a reranker score alongside docs.
+    If no chunk scores above CONFIDENCE_THRESHOLD, returns a graceful fallback
+    rather than sending weak context to the LLM.
+  - Returns a structured `citations` dict so the UI can show exact sources.
+"""
+
 from __future__ import annotations
 
+import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Iterable
 
 from langchain_openai import ChatOpenAI
 
-from config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL, LLM_TEMPERATURE
+from config import (
+    CONFIDENCE_THRESHOLD,
+    DEEPSEEK_API_KEY,
+    DEEPSEEK_BASE_URL,
+    DEEPSEEK_MODEL,
+    LLM_MAX_RETRIES,
+    LLM_TEMPERATURE,
+    LLM_TIMEOUT,
+)
 from rag.prompts import CONDENSE_QUESTION_PROMPT, QA_PROMPT
 from rag.retriever import retriever
+
+logger = logging.getLogger(__name__)
 
 if not DEEPSEEK_API_KEY:
     raise ValueError(
@@ -20,10 +46,12 @@ llm = ChatOpenAI(
     api_key=DEEPSEEK_API_KEY,
     base_url=DEEPSEEK_BASE_URL,
     temperature=LLM_TEMPERATURE,
+    timeout=LLM_TIMEOUT,
+    max_retries=LLM_MAX_RETRIES,
 )
 
 # ---------------------------------------------------------------------------
-# Intent classification
+# Intent classification (unchanged from original)
 # ---------------------------------------------------------------------------
 
 GREETING_PATTERNS = {
@@ -66,6 +94,16 @@ OFF_TOPIC_PATTERNS = re.compile(
     re.IGNORECASE,
 )
 
+# Signals that a question depends on prior context and needs rewriting.
+# If none of these appear, the question is already standalone — skip the
+# rewrite LLM call entirely.
+_DEPENDENCY_SIGNALS = re.compile(
+    r"\b(it|its|that|those|these|they|them|their|this|there|"
+    r"the same|the above|what about|how about|and what|also|"
+    r"more about|tell me more|elaborate|explain further|what else)\b|^\s*(for|about|and|but)\s+\w",
+    re.IGNORECASE,
+)
+
 
 def _is_greeting(text: str) -> bool:
     return text.lower().strip().rstrip("!?. ") in GREETING_PATTERNS
@@ -75,6 +113,13 @@ def _is_off_topic(text: str) -> bool:
     if SMIT_KEYWORDS.search(text):
         return False
     return bool(OFF_TOPIC_PATTERNS.match(text.strip()))
+
+
+def _needs_rewrite(question: str, chat_history: list) -> bool:
+    """Return True only when a rewrite LLM call is actually necessary."""
+    if not chat_history:
+        return False
+    return bool(_DEPENDENCY_SIGNALS.search(question))
 
 
 # ---------------------------------------------------------------------------
@@ -95,16 +140,45 @@ def _format_chat_history(chat_history: Iterable[tuple[str, str]]) -> str:
     return "\n".join(turns)
 
 
-def _format_documents(documents) -> str:
-    chunks = []
-    for document in documents:
-        source = document.metadata.get("source", "unknown")
-        page = document.metadata.get("page")
-        prefix = f"Source: {source}"
+def _format_documents(documents: list) -> tuple[str, dict]:
+    """
+    Build a numbered context string and a parallel citations dict.
+
+    Returns:
+        context_str  — what gets injected into the QA prompt.
+        citations    — {citation_number: {source, page, type, score}} for the UI.
+
+    Numbering ([1], [2], ...) lets the LLM reference specific sources
+    in its answer, and lets the UI link them.
+    """
+    chunks: list[str] = []
+    citations: dict[int, dict] = {}
+
+    for idx, doc in enumerate(documents, start=1):
+        meta = doc.metadata
+        source = meta.get("source", "unknown")
+        page   = meta.get("page")
+        dtype  = meta.get("type", "unknown")
+        score  = meta.get("reranker_score")
+
+        # Build citation record for the UI
+        citation: dict[str, Any] = {"source": source, "type": dtype}
         if page is not None:
-            prefix += f" | Page: {page}"
-        chunks.append(f"{prefix}\n{document.page_content}")
-    return "\n\n".join(chunks)
+            citation["page"] = page
+        if score is not None:
+            citation["score"] = score
+        citations[idx] = citation
+
+        # Build context block shown to the LLM
+        header_parts = [f"[{idx}] Source: {source}"]
+        if page is not None:
+            header_parts.append(f"Page {page}")
+        header_parts.append(f"({dtype})")
+        header = " | ".join(header_parts)
+
+        chunks.append(f"{header}\n{doc.page_content}")
+
+    return "\n\n---\n\n".join(chunks), citations
 
 
 # ---------------------------------------------------------------------------
@@ -116,54 +190,91 @@ class SimpleConversationalRetrievalChain:
     llm: ChatOpenAI
     retriever: Any
 
-    def _rewrite_question(self, question: str, chat_history) -> str:
-        if not chat_history:
+    def _rewrite_question(self, question: str, chat_history: list) -> str:
+        """
+        Rewrite only when the question contains a real dependency signal.
+        If the rewrite LLM call fails, log a warning and return the original
+        question — never abort the whole request over a rewrite failure.
+        """
+        if not _needs_rewrite(question, chat_history):
             return question
+
         prompt = CONDENSE_QUESTION_PROMPT.format(
             chat_history=_format_chat_history(chat_history),
             question=question,
         )
         try:
             rewritten = _message_text(self.llm.invoke(prompt)).strip()
+            logger.debug("Rewrite: %r -> %r", question, rewritten)
+            return rewritten or question
         except Exception as exc:
-            raise RuntimeError("question rewrite failed") from exc
-        return rewritten or question
+            logger.warning(
+                "Question rewrite failed (%s: %s); using original question.",
+                type(exc).__name__, exc,
+            )
+            return question   # non-fatal fallback
 
     def invoke(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        question = inputs.get("question", "").strip()
+        question    = inputs.get("question", "").strip()
         chat_history = inputs.get("chat_history", [])
 
-        # --- Intent check ---
+        # --- Intent shortcuts ---
         if _is_greeting(question):
             return {
                 "answer": GREETING_RESPONSE,
                 "source_documents": [],
+                "citations": {},
                 "question": question,
                 "intent": "greeting",
+                "confidence": 999.0,
             }
 
         if _is_off_topic(question):
             return {
                 "answer": OFF_TOPIC_RESPONSE,
                 "source_documents": [],
+                "citations": {},
                 "question": question,
                 "intent": "off_topic",
+                "confidence": 999.0,
             }
 
-        # --- Full RAG pipeline ---
+        # --- Rewrite (only when needed) ---
         standalone_question = self._rewrite_question(question, chat_history)
 
+        # --- Retrieval with confidence score ---
         try:
-            source_documents = list(self.retriever.invoke(standalone_question))
+            source_documents, top_confidence = self.retriever.retrieve_with_confidence(
+                standalone_question
+            )
         except Exception as exc:
             raise RuntimeError("retrieval failed") from exc
 
-        context = _format_documents(source_documents)
+        # --- Weak-context guard ---
+        # If no chunk is genuinely relevant, don't send thin context to the LLM.
+        if not source_documents or top_confidence < CONFIDENCE_THRESHOLD:
+            logger.info(
+                "Low confidence (%.3f < %.3f) for query %r; returning fallback.",
+                top_confidence, CONFIDENCE_THRESHOLD, standalone_question,
+            )
+            return {
+                "answer": "I couldn't find that information in the SMIT knowledge base.",
+                "source_documents": [],
+                "citations": {},
+                "question": standalone_question,
+                "intent": "low_confidence",
+                "confidence": top_confidence,
+            }
+
+        # --- Build context & prompt ---
+        context, citations = _format_documents(source_documents)
 
         answer_prompt = QA_PROMPT.format(
             context=context,
             question=standalone_question,
         )
+
+        # --- LLM answer generation ---
         try:
             answer = _message_text(self.llm.invoke(answer_prompt)).strip()
         except Exception as exc:
@@ -172,8 +283,10 @@ class SimpleConversationalRetrievalChain:
         return {
             "answer": answer,
             "source_documents": source_documents,
+            "citations": citations,
             "question": standalone_question,
             "intent": "smit_query",
+            "confidence": top_confidence,
         }
 
 
