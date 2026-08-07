@@ -42,6 +42,8 @@ Answer the student's question using ONLY the numbered context chunks below.
 RULES:
 1. Use only information that appears explicitly in the context.
    Do not infer, guess, or use general knowledge.
+   For role/identity questions like "who is the director", a leadership or
+   staff profile page that explicitly names the office holder is enough.
 2. If the answer is present, cite the source number(s) like [1] or [2, 3].
    Prioritise [type: webpage] sources over [type: pdf] when both cover
    the same fact — webpage content is more current.
