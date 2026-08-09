@@ -76,6 +76,9 @@ OFF_TOPIC_RESPONSE = (
     "to ask anything about SMIT!"
 )
 
+DIRECTOR_RESPONSE = "Prof. (Dr.) Savitha G.Kini is the director of smit as of now 2026"
+HIGHEST_PACKAGE_RESPONSE = "The highest package offered at smit is INR 54 LPA"
+
 SMIT_KEYWORDS = re.compile(
     r"\b(smit|smu|sikkim|manipal|b\.?tech|mtech|mba|mca|bca|bba|"
     r"admission|fee|fees|placement|scholarship|hostel|campus|faculty|"
@@ -91,6 +94,20 @@ OFF_TOPIC_PATTERNS = re.compile(
     r"tell me a joke|make me laugh|play (a song|music)|"
     r"(weather|temperature) in|translate (this )?to|"
     r"capital of [a-z]+$)",
+    re.IGNORECASE,
+)
+
+DIRECTOR_PATTERNS = re.compile(
+    r"\bwho\s+(?:is|was)\s+(?:the\s+)?director\s+(?:of|at)\s+"
+    r"(?:smit|sikkim manipal institute of technology)\b|"
+    r"\bdirector\s+(?:of|at)\s+(?:smit|sikkim manipal institute of technology)\b",
+    re.IGNORECASE,
+)
+
+HIGHEST_PACKAGE_PATTERNS = re.compile(
+    r"\b(what\s+is\s+)?(the\s+)?(highest)\s+package\s+"
+    r"(of|at|offered\s+at)\s+(smit|sikkim manipal institute of technology)\b|"
+    r"\b(package\s+of\s+smit|smit\s+package\s+highest)\b",
     re.IGNORECASE,
 )
 
@@ -113,6 +130,14 @@ def _is_off_topic(text: str) -> bool:
     if SMIT_KEYWORDS.search(text):
         return False
     return bool(OFF_TOPIC_PATTERNS.match(text.strip()))
+
+
+def _is_director_question(text: str) -> bool:
+    return bool(DIRECTOR_PATTERNS.search(text.strip()))
+
+
+def _is_highest_package_question(text: str) -> bool:
+    return bool(HIGHEST_PACKAGE_PATTERNS.search(text.strip()))
 
 
 def _needs_rewrite(question: str, chat_history: list) -> bool:
@@ -226,6 +251,26 @@ class SimpleConversationalRetrievalChain:
                 "citations": {},
                 "question": question,
                 "intent": "greeting",
+                "confidence": 999.0,
+            }
+
+        if _is_director_question(question):
+            return {
+                "answer": DIRECTOR_RESPONSE,
+                "source_documents": [],
+                "citations": {},
+                "question": question,
+                "intent": "director_lookup",
+                "confidence": 999.0,
+            }
+
+        if _is_highest_package_question(question):
+            return {
+                "answer": HIGHEST_PACKAGE_RESPONSE,
+                "source_documents": [],
+                "citations": {},
+                "question": question,
+                "intent": "highest_package_lookup",
                 "confidence": 999.0,
             }
 
