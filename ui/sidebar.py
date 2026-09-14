@@ -4,6 +4,8 @@ Left sidebar: branding, suggested questions, announcements, events, clear button
 
 import streamlit as st
 from ui.constants import SUGGESTED, ANNOUNCEMENTS, EVENTS
+from ui.session import save_active_thread
+from ui.thread_store import create_thread, list_threads
 
 
 def _h(html: str) -> str:
@@ -22,6 +24,37 @@ def render_sidebar() -> None:
             '</div>',
             unsafe_allow_html=True,
         )
+
+        st.divider()
+
+        if st.button("+ New Chat", use_container_width=True, key="new_chat_btn"):
+            thread = create_thread()
+            st.session_state.thread_id = thread.thread_id
+            st.session_state.messages = []
+            st.session_state.chat_history = []
+            st.rerun()
+
+        st.markdown(
+            '<p style="color:#94a3b8;font-size:11px;font-weight:700;'
+            'text-transform:uppercase;letter-spacing:.08em;margin:14px 0 8px;">'
+            'My Conversations</p>',
+            unsafe_allow_html=True,
+        )
+
+        threads = list_threads()
+        for thread in threads:
+            label = thread.title or "New Chat"
+            if thread.thread_id == st.session_state.thread_id:
+                label = f"● {label}"
+            if st.button(
+                label,
+                use_container_width=True,
+                key=f"thread_{thread.thread_id}",
+            ) and thread.thread_id != st.session_state.thread_id:
+                st.session_state.thread_id = thread.thread_id
+                st.rerun()
+
+        st.caption(f"Thread: {st.session_state.thread_id[:8]}")
 
         st.divider()
 
@@ -89,4 +122,5 @@ def render_sidebar() -> None:
                      use_container_width=True, key="clear_btn"):
             st.session_state.messages = []
             st.session_state.chat_history = []
+            save_active_thread()
             st.rerun()

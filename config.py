@@ -63,7 +63,7 @@ RETRIEVER_K = 6
 RETRIEVER_FETCH_MULTIPLIER = 3
 
 WEBPAGE_DISTANCE_THRESHOLD = 0.85
-PDF_DISTANCE_THRESHOLD = 1.05
+PDF_DISTANCE_THRESHOLD = 1.20
 
 MAX_CHUNKS_PER_SOURCE = 2
 
@@ -72,7 +72,7 @@ MAX_CHUNKS_PER_SOURCE = 2
 # ---------------------------------------------------------------------------
 RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
-CONFIDENCE_THRESHOLD = -6.0
+CONFIDENCE_THRESHOLD = -8.0
 
 # ---------------------------------------------------------------------------
 # LLM

@@ -17,7 +17,7 @@ except Exception as exc:
     _startup_error = f"{type(exc).__name__}: {exc}"
 
 from ui.styles import apply_styles
-from ui.session import init_session
+from ui.session import init_session, save_active_thread
 from ui.sidebar import render_sidebar
 from ui.header import render_header
 from ui.chips import render_chips
@@ -84,14 +84,30 @@ def ask(question: str) -> None:
 
     try:
         st.session_state.last_error = None
-        result = qa_chain.invoke(
-            {
-                "question": question,
-                "chat_history": st.session_state.chat_history,
-            }
-        )
+        stream_inputs = {
+            "question": question,
+            "chat_history": st.session_state.chat_history,
+        }
+        result = None
 
-        answer = result["answer"]
+        with st.chat_message("assistant"):
+            def response_stream():
+                nonlocal result
+                for event in qa_chain.stream(stream_inputs):
+                    if event["type"] == "token":
+                        text = event["content"]
+                        lines = text.splitlines(keepends=True)
+                        for line in lines:
+                            yield line
+                    else:
+                        result = event["result"]
+
+            streamed_answer = st.write_stream(response_stream())
+
+        if result is None:
+            raise RuntimeError("stream ended without a response")
+
+        answer = result.get("answer") or streamed_answer
         intent = result.get("intent", "smit_query")
         sources = sorted(
             {
@@ -119,6 +135,8 @@ def ask(question: str) -> None:
     if intent == "smit_query":
         st.session_state.chat_history.append((question, answer))
         st.session_state.chat_history = st.session_state.chat_history[-MAX_HISTORY:]
+
+    save_active_thread()
 
 
 # ── Sidebar (left nav) ────────────────────────────────────────────────────────

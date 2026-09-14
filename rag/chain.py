@@ -239,6 +239,72 @@ class SimpleConversationalRetrievalChain:
             )
             return question   # non-fatal fallback
 
+    def stream(self, inputs: dict[str, Any]):
+        question = inputs.get("question", "").strip()
+        chat_history = inputs.get("chat_history", [])
+
+        if _is_greeting(question):
+            result = {"answer": GREETING_RESPONSE, "source_documents": [], "intent": "greeting", "confidence": 999.0}
+            yield {"type": "token", "content": result["answer"]}
+            yield {"type": "metadata", "result": result}
+            return
+
+        if _is_director_question(question):
+            result = {"answer": DIRECTOR_RESPONSE, "source_documents": [], "intent": "director_lookup", "confidence": 999.0}
+            yield {"type": "token", "content": result["answer"]}
+            yield {"type": "metadata", "result": result}
+            return
+
+        if _is_highest_package_question(question):
+            result = {"answer": HIGHEST_PACKAGE_RESPONSE, "source_documents": [], "intent": "highest_package_lookup", "confidence": 999.0}
+            yield {"type": "token", "content": result["answer"]}
+            yield {"type": "metadata", "result": result}
+            return
+
+        if _is_off_topic(question):
+            result = {"answer": OFF_TOPIC_RESPONSE, "source_documents": [], "intent": "off_topic", "confidence": 999.0}
+            yield {"type": "token", "content": result["answer"]}
+            yield {"type": "metadata", "result": result}
+            return
+
+        standalone_question = self._rewrite_question(question, chat_history)
+        source_documents, top_confidence = self.retriever.retrieve_with_confidence(
+            standalone_question
+        )
+
+        if not source_documents or top_confidence < CONFIDENCE_THRESHOLD:
+            result = {
+                "answer": "I couldn't find that information in the SMIT knowledge base.",
+                "source_documents": [],
+                "question": standalone_question,
+                "intent": "low_confidence",
+                "confidence": top_confidence,
+            }
+            yield {"type": "token", "content": result["answer"]}
+            yield {"type": "metadata", "result": result}
+            return
+
+        context, citations = _format_documents(source_documents)
+        answer_prompt = QA_PROMPT.format(context=context, question=standalone_question)
+        answer_parts = []
+        for chunk in self.llm.stream(answer_prompt):
+            text = _message_text(chunk)
+            if text:
+                answer_parts.append(text)
+                yield {"type": "token", "content": text}
+
+        yield {
+            "type": "metadata",
+            "result": {
+                "answer": "".join(answer_parts).strip(),
+                "source_documents": source_documents,
+                "citations": citations,
+                "question": standalone_question,
+                "intent": "smit_query",
+                "confidence": top_confidence,
+            },
+        }
+
     def invoke(self, inputs: dict[str, Any]) -> dict[str, Any]:
         question    = inputs.get("question", "").strip()
         chat_history = inputs.get("chat_history", [])
